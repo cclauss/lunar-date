@@ -22,6 +22,7 @@ along with this library; if not, see <http://www.gnu.org/licenses/>.
 """
 
 import toml
+import datetime
 
 class Table(object):
     def __init__ (self, file):
@@ -62,7 +63,7 @@ class Table(object):
 long years_info[NUM_OF_YEARS] = {
 	/* encoding:
 	 *
-	 * b      bbbbbbbbbbbb bbbb
+	 * b      FEDCBA987654 3210
 	 * bit#	1 111111000000 0000
 	 *      6 543210987654 3210
 	 *      . ............ ....
@@ -87,56 +88,54 @@ long years_info[NUM_OF_YEARS] = {
                 print("{},".format(val), end = ' ')
         print("  /* {} */".format(i), end = '\n};\n\n')
 
-    def gen_fest(self):
-        print("static gchar fest[NUM_OF_YEARS][%d] = {" % self.count)
-        for i in self.lst:
-            print("{", end = ' ')
-            #jie_lst = [ str(x) for x in self.get_holidays(i)]
-            #x = ', '.join(jie_lst)
-            #print(x, end = ' ')
-            #print("},   /* %s */" % str(i))
-        print('};\n\n')
-
     """
-    算法：
-    使用一个整数表示当年上班和休息日
-
-    法定节假日算法：
+    法定节假日编码
     使用一个 uint16 类型表示当年的法定假日调整情况
 
-    年份 [15:9], 共7位，值加上2000表示公历年份。 (1<<7) - 1 = 127，最大可表示年份为 2127 年。
-    日期 [8:0], 共9位，值以二进制位来表示当年哪天的上班/休息状态需要调整(即休息变上班，上班变休息)，(1<<9) - 1 = 511位，可表示一年 365 天的状态。
+    bit:  FEDC BA98 7654 3210
+    fmt:  YYYY YYYD DDDD DDDD
+          .... .... .... ....
+    year: YYYY YYY0 0000 0000  year[15:9], 1 <= year <= 127, max value is  (1<<7) -1 = 127
+    days: 0000 000D DDDD DDDD  days[8:0], 1 <= days <= 366, max value is (1<<9) -1 = 511
+
+    year: 年份, 使用[15:9]表示，共7位，值加上2000表示公历年份。 (1<<7) - 1 = 127，最大可表示年份为 2127 年。
+    days: 日期[8:0], 共9位，值以二进制位来表示当年哪天的上班/休息状态需要调整(即休息变上班，上班变休息)，(1<<9) - 1 = 511位，可表示一年 365 天的状态。
 
     """
     def get_holidays(self, year):
         year_data = self.data[year]
-        return year_data.get('statutory_holidays')
-#       print(dir(year_data))
-#        print(year_data.keys())
-#        if year_data.has_keys('statutory_holidays'):
-#            return year_data['statutory_holidays']
-#        else:
-#            return []
+        if not 'statutory_holidays' in year_data.keys():
+            return []
+
+        days = year_data.get('statutory_holidays')
+        result = []
+        for i in days:
+            if len(i) != 4:
+                print ('{} in {} is not valid date'.format(i, year))
+                return []
+            else:
+                year = int(year)
+                month, day = int(i[:2]), int(i[2:])
+                date = datetime.date(year, month, day)
+                num = date.strftime('%j')
+                result.append(int(num))
+        return result
 
     def gen_holidays(self):
-        print("static gchar statutory_holidays[NUM_OF_YEARS][%d] = {" % self.count)
+        print("static gshort statutory_holidays[] = {")
         for i in self.lst:
             days = self.get_holidays(i)
             if days:
                 year = int(i) - 2000
-                #year = year << 9
-                print (year, hex(year << 9))
-                print (i)
+                y = year << 9
                 for j in days:
-                    print(j)
-            #print("{", end = ' ')
-            #jie_lst = [ str(x) for x in self.get_holidays(i)]
-            #print(jie_lst)
-        print("  /* {} */".format(i), end = '\n};\n\n')
+                    day = y|j
+                    print(" {}".format(hex(day)), end = ',')
+                print("  /* {} */".format(i), end = '\n')
+        print("}", end = '\n')
 
 if __name__=="__main__":
     t = Table("table.toml")
     t.load()
     #t.gen_year_info()
-    #t.gen_fest()
     t.gen_holidays()
